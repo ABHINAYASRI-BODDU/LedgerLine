@@ -1,7 +1,7 @@
 
 from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.orm import Session
-
+from app.services.ledger_service import get_account_balance
 from app.database import get_db
 from app.dependencies.permissions import get_current_user, require_role
 from app.models.user import User
@@ -95,3 +95,29 @@ def change_account_status(
         account_id=account_id,
         new_status=new_status
     )
+@router.get("/{account_id}/balance")
+def get_my_account_balance(
+    account_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    account = get_account_by_id(
+        db=db,
+        account_id=account_id,
+        current_user=current_user
+    )
+
+    if account is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Account not found"
+        )
+
+    balance_paise = get_account_balance(db, account)
+
+    return {
+        "account_id": account.id,
+        "balance_paise": balance_paise,
+        "balance": balance_paise / 100,
+        "currency": account.currency
+    }
