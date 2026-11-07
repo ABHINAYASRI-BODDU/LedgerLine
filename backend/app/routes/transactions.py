@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
+from app.models.account import Account
+from app.models.transaction import Transaction
 from app.database import get_db
 from app.dependencies.permissions import get_current_user
 from app.models.user import User
@@ -150,3 +153,25 @@ def transfer_money(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error)
         )
+@router.get(
+    "/history",
+    response_model=list[TransactionResponse]
+)
+def get_transaction_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    user_account_ids = db.query(Account.id).filter(
+        Account.user_id == current_user.id
+    ).subquery()
+
+    transactions = db.query(Transaction).filter(
+        or_(
+            Transaction.source_account_id.in_(user_account_ids),
+            Transaction.destination_account_id.in_(user_account_ids)
+        )
+    ).order_by(
+        Transaction.created_at.desc()
+    ).all()
+
+    return transactions
