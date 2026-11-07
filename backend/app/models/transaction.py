@@ -36,7 +36,11 @@ class Transaction(Base):
         primary_key=True,
         index=True
     )
-
+    idempotency_key = mapped_column(
+        String(100),
+        nullable=True,
+        unique=True
+    )
     transaction_type = mapped_column(
         String(20),
         nullable=False

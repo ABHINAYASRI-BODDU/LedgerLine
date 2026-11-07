@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -54,7 +55,8 @@ def deposit_money(
             db=db,
             account=account,
             amount_paise=deposit_data.amount_paise,
-            initiated_by=current_user.id
+            initiated_by=current_user.id,
+            idempotency_key=deposit_data.idempotency_key
         )
 
         return transaction
@@ -93,7 +95,8 @@ def withdraw_money(
             db=db,
             account=account,
             amount_paise=withdrawal_data.amount_paise,
-            initiated_by=current_user.id
+            initiated_by=current_user.id,
+            idempotency_key=withdrawal_data.idempotency_key
         )
 
         return transaction
@@ -103,6 +106,8 @@ def withdraw_money(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error)
         )
+
+
 @router.post(
     "/transfer",
     response_model=TransactionResponse,
@@ -143,7 +148,8 @@ def transfer_money(
             source_account=source_account,
             destination_account=destination_account,
             amount_paise=transfer_data.amount_paise,
-            initiated_by=current_user.id
+            initiated_by=current_user.id,
+            idempotency_key=transfer_data.idempotency_key
         )
 
         return transaction
@@ -153,6 +159,8 @@ def transfer_money(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error)
         )
+
+
 @router.get(
     "/history",
     response_model=list[TransactionResponse]

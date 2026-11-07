@@ -1,10 +1,73 @@
+
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.models.user import User
+
 from app.models.account import Account
 from app.models.ledger_account import LedgerAccount
 from app.models.transaction import Transaction
 from app.models.ledger_entry import LedgerEntry
+
+
+def check_existing_transaction(
+    db: Session,
+    idempotency_key: str,
+    initiated_by: int,
+    transaction_type: str,
+    amount_paise: int,
+    source_account_id: int | None,
+    destination_account_id: int | None
+):
+    existing_transaction = (
+        db.query(Transaction)
+        .filter(
+            Transaction.idempotency_key == idempotency_key
+        )
+        .first()
+    )
+
+    if existing_transaction is None:
+        return None
+
+    if (
+        existing_transaction.initiated_by != initiated_by
+        or existing_transaction.transaction_type != transaction_type
+        or existing_transaction.amount_paise != amount_paise
+        or existing_transaction.source_account_id != source_account_id
+        or existing_transaction.destination_account_id != destination_account_id
+    ):
+        raise ValueError(
+            "Idempotency key already used for a different transaction."
+        )
+
+    return existing_transaction
+
+
+# Verify debit and credit equality before posting
+def verify_transaction_balance(db: Session, transaction):
+    debit_total = (
+        db.query(func.sum(LedgerEntry.amount_paise))
+        .filter(
+            LedgerEntry.transaction_id == transaction.id,
+            LedgerEntry.entry_type == "debit"
+        )
+        .scalar() or 0
+    )
+
+    credit_total = (
+        db.query(func.sum(LedgerEntry.amount_paise))
+        .filter(
+            LedgerEntry.transaction_id == transaction.id,
+            LedgerEntry.entry_type == "credit"
+        )
+        .scalar() or 0
+    )
+
+    if (
+        debit_total != credit_total
+        or debit_total != transaction.amount_paise
+    ):
+        raise ValueError("Transaction is not balanced.")
+
 
 def create_system_ledger_accounts(db: Session):
     system_accounts = [
@@ -31,6 +94,8 @@ def create_system_ledger_accounts(db: Session):
             db.add(ledger_account)
 
     db.commit()
+
+
 def get_or_create_customer_ledger_account(db: Session, account):
     existing_ledger_account = (
         db.query(LedgerAccount)
@@ -53,20 +118,35 @@ def get_or_create_customer_ledger_account(db: Session, account):
     db.flush()
 
     return ledger_account
+
+
 def record_deposit(
     db: Session,
     account,
     amount_paise: int,
-    initiated_by: int
+    initiated_by: int,
+    idempotency_key: str
 ):
     if amount_paise <= 0:
         raise ValueError("Deposit amount must be positive.")
+
+    existing_transaction = check_existing_transaction(
+        db=db,
+        idempotency_key=idempotency_key,
+        initiated_by=initiated_by,
+        transaction_type="deposit",
+        amount_paise=amount_paise,
+        source_account_id=None,
+        destination_account_id=account.id
+    )
+
+    if existing_transaction is not None:
+        return existing_transaction
 
     if account.status != "active":
         raise ValueError("Deposits are allowed only for active accounts.")
 
     try:
-        # Find the system cash ledger account
         cash_ledger = (
             db.query(LedgerAccount)
             .filter(LedgerAccount.code == "SYS_CASH")
@@ -76,12 +156,10 @@ def record_deposit(
         if cash_ledger is None:
             raise ValueError("System cash ledger account not found.")
 
-        # Get or create the customer's ledger account
         customer_ledger = get_or_create_customer_ledger_account(
             db, account
         )
 
-        # Create the transaction
         transaction = Transaction(
             transaction_type="deposit",
             amount_paise=amount_paise,
@@ -89,12 +167,12 @@ def record_deposit(
             destination_account_id=account.id,
             initiated_by=initiated_by,
             status="pending",
+            idempotency_key=idempotency_key
         )
 
         db.add(transaction)
         db.flush()
 
-        # Debit the system cash account
         debit_entry = LedgerEntry(
             transaction_id=transaction.id,
             ledger_account_id=cash_ledger.id,
@@ -102,7 +180,6 @@ def record_deposit(
             amount_paise=amount_paise,
         )
 
-        # Credit the customer's liability account
         credit_entry = LedgerEntry(
             transaction_id=transaction.id,
             ledger_account_id=customer_ledger.id,
@@ -112,6 +189,11 @@ def record_deposit(
 
         db.add_all([debit_entry, credit_entry])
 
+        # Save entries temporarily and verify them
+        db.flush()
+        verify_transaction_balance(db, transaction)
+
+        # Post only after successful verification
         transaction.status = "posted"
 
         db.commit()
@@ -121,6 +203,8 @@ def record_deposit(
     except Exception:
         db.rollback()
         raise
+
+
 def get_account_balance(db: Session, account):
     customer_ledger = (
         db.query(LedgerAccount)
@@ -149,15 +233,31 @@ def get_account_balance(db: Session, account):
         .scalar() or 0
     )
 
-    return credits - debits    
+    return credits - debits
+
+
 def record_withdrawal(
     db: Session,
     account,
     amount_paise: int,
-    initiated_by: int
+    initiated_by: int,
+    idempotency_key: str
 ):
     if amount_paise <= 0:
         raise ValueError("Withdrawal amount must be positive.")
+
+    existing_transaction = check_existing_transaction(
+        db=db,
+        idempotency_key=idempotency_key,
+        initiated_by=initiated_by,
+        transaction_type="withdrawal",
+        amount_paise=amount_paise,
+        source_account_id=account.id,
+        destination_account_id=None
+    )
+
+    if existing_transaction is not None:
+        return existing_transaction
 
     if account.status != "active":
         raise ValueError("Withdrawals are allowed only for active accounts.")
@@ -188,6 +288,7 @@ def record_withdrawal(
             destination_account_id=None,
             initiated_by=initiated_by,
             status="pending",
+            idempotency_key=idempotency_key
         )
 
         db.add(transaction)
@@ -209,6 +310,11 @@ def record_withdrawal(
 
         db.add_all([debit_entry, credit_entry])
 
+        # Save entries temporarily and verify them
+        db.flush()
+        verify_transaction_balance(db, transaction)
+
+        # Post only after successful verification
         transaction.status = "posted"
 
         db.commit()
@@ -217,16 +323,32 @@ def record_withdrawal(
 
     except Exception:
         db.rollback()
-        raise   
+        raise
+
+
 def record_transfer(
     db: Session,
     source_account,
     destination_account,
     amount_paise: int,
-    initiated_by: int
+    initiated_by: int,
+    idempotency_key: str
 ):
     if amount_paise <= 0:
         raise ValueError("Transfer amount must be positive.")
+
+    existing_transaction = check_existing_transaction(
+        db=db,
+        idempotency_key=idempotency_key,
+        initiated_by=initiated_by,
+        transaction_type="transfer",
+        amount_paise=amount_paise,
+        source_account_id=source_account.id,
+        destination_account_id=destination_account.id
+    )
+
+    if existing_transaction is not None:
+        return existing_transaction
 
     if source_account.id == destination_account.id:
         raise ValueError("Cannot transfer to the same account.")
@@ -258,6 +380,7 @@ def record_transfer(
             destination_account_id=destination_account.id,
             initiated_by=initiated_by,
             status="pending",
+            idempotency_key=idempotency_key
         )
 
         db.add(transaction)
@@ -279,6 +402,11 @@ def record_transfer(
 
         db.add_all([debit_entry, credit_entry])
 
+        # Save entries temporarily and verify them
+        db.flush()
+        verify_transaction_balance(db, transaction)
+
+        # Post only after successful verification
         transaction.status = "posted"
 
         db.commit()
