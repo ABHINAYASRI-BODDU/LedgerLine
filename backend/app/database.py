@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -18,7 +17,10 @@ DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
 # Create database engine
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 30
+    }
 )
 
 

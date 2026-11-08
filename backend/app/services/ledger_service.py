@@ -1,4 +1,3 @@
-
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -6,6 +5,7 @@ from app.models.account import Account
 from app.models.ledger_account import LedgerAccount
 from app.models.transaction import Transaction
 from app.models.ledger_entry import LedgerEntry
+from app.services.concurrency import lock_accounts_for_money_movement
 
 
 # Verify that the authenticated user owns the account.
@@ -46,7 +46,6 @@ def check_existing_transaction(
             "Idempotency key already used for a different transaction."
         )
 
-    # Return only successfully posted transactions.
     if existing_transaction.status != "posted":
         raise ValueError(
             "Existing transaction is not successfully posted."
@@ -146,25 +145,38 @@ def record_deposit(
     if amount_paise <= 0:
         raise ValueError("Deposit amount must be positive.")
 
-    verify_account_ownership(account, initiated_by)
-
-    existing_transaction = check_existing_transaction(
-        db=db,
-        idempotency_key=idempotency_key,
-        initiated_by=initiated_by,
-        transaction_type="deposit",
-        amount_paise=amount_paise,
-        source_account_id=None,
-        destination_account_id=account.id
-    )
-
-    if existing_transaction is not None:
-        return existing_transaction
-
-    if account.status != "active":
-        raise ValueError("Deposits are allowed only for active accounts.")
+    # Save the ID before the helper rolls back the earlier read transaction.
+    account_id = account.id
 
     try:
+        locked_accounts = lock_accounts_for_money_movement(
+            db,
+            [account_id]
+        )
+
+        # Always use the freshly loaded account.
+        account = locked_accounts[account_id]
+
+        verify_account_ownership(account, initiated_by)
+
+        existing_transaction = check_existing_transaction(
+            db=db,
+            idempotency_key=idempotency_key,
+            initiated_by=initiated_by,
+            transaction_type="deposit",
+            amount_paise=amount_paise,
+            source_account_id=None,
+            destination_account_id=account_id
+        )
+
+        if existing_transaction is not None:
+            return existing_transaction
+
+        if account.status != "active":
+            raise ValueError(
+                "Deposits are allowed only for active accounts."
+            )
+
         cash_ledger = (
             db.query(LedgerAccount)
             .filter(LedgerAccount.code == "SYS_CASH")
@@ -182,7 +194,7 @@ def record_deposit(
             transaction_type="deposit",
             amount_paise=amount_paise,
             source_account_id=None,
-            destination_account_id=account.id,
+            destination_account_id=account_id,
             initiated_by=initiated_by,
             status="pending",
             idempotency_key=idempotency_key
@@ -206,8 +218,8 @@ def record_deposit(
         )
 
         db.add_all([debit_entry, credit_entry])
-
         db.flush()
+
         verify_transaction_balance(db, transaction)
 
         transaction.status = "posted"
@@ -265,25 +277,36 @@ def record_withdrawal(
     if amount_paise <= 0:
         raise ValueError("Withdrawal amount must be positive.")
 
-    verify_account_ownership(account, initiated_by)
-
-    existing_transaction = check_existing_transaction(
-        db=db,
-        idempotency_key=idempotency_key,
-        initiated_by=initiated_by,
-        transaction_type="withdrawal",
-        amount_paise=amount_paise,
-        source_account_id=account.id,
-        destination_account_id=None
-    )
-
-    if existing_transaction is not None:
-        return existing_transaction
-
-    if account.status != "active":
-        raise ValueError("Withdrawals are allowed only for active accounts.")
+    account_id = account.id
 
     try:
+        locked_accounts = lock_accounts_for_money_movement(
+            db,
+            [account_id]
+        )
+
+        account = locked_accounts[account_id]
+
+        verify_account_ownership(account, initiated_by)
+
+        existing_transaction = check_existing_transaction(
+            db=db,
+            idempotency_key=idempotency_key,
+            initiated_by=initiated_by,
+            transaction_type="withdrawal",
+            amount_paise=amount_paise,
+            source_account_id=account_id,
+            destination_account_id=None
+        )
+
+        if existing_transaction is not None:
+            return existing_transaction
+
+        if account.status != "active":
+            raise ValueError(
+                "Withdrawals are allowed only for active accounts."
+            )
+
         cash_ledger = (
             db.query(LedgerAccount)
             .filter(LedgerAccount.code == "SYS_CASH")
@@ -305,7 +328,7 @@ def record_withdrawal(
         transaction = Transaction(
             transaction_type="withdrawal",
             amount_paise=amount_paise,
-            source_account_id=account.id,
+            source_account_id=account_id,
             destination_account_id=None,
             initiated_by=initiated_by,
             status="pending",
@@ -330,8 +353,8 @@ def record_withdrawal(
         )
 
         db.add_all([debit_entry, credit_entry])
-
         db.flush()
+
         verify_transaction_balance(db, transaction)
 
         transaction.status = "posted"
@@ -358,32 +381,43 @@ def record_transfer(
     if amount_paise <= 0:
         raise ValueError("Transfer amount must be positive.")
 
-    verify_account_ownership(source_account, initiated_by)
-    verify_account_ownership(destination_account, initiated_by)
+    source_account_id = source_account.id
+    destination_account_id = destination_account.id
 
-    existing_transaction = check_existing_transaction(
-        db=db,
-        idempotency_key=idempotency_key,
-        initiated_by=initiated_by,
-        transaction_type="transfer",
-        amount_paise=amount_paise,
-        source_account_id=source_account.id,
-        destination_account_id=destination_account.id
-    )
-
-    if existing_transaction is not None:
-        return existing_transaction
-
-    if source_account.id == destination_account.id:
+    if source_account_id == destination_account_id:
         raise ValueError("Cannot transfer to the same account.")
 
-    if source_account.status != "active":
-        raise ValueError("Source account must be active.")
-
-    if destination_account.status != "active":
-        raise ValueError("Destination account must be active.")
-
     try:
+        locked_accounts = lock_accounts_for_money_movement(
+            db,
+            [source_account_id, destination_account_id]
+        )
+
+        source_account = locked_accounts[source_account_id]
+        destination_account = locked_accounts[destination_account_id]
+
+        verify_account_ownership(source_account, initiated_by)
+        verify_account_ownership(destination_account, initiated_by)
+
+        existing_transaction = check_existing_transaction(
+            db=db,
+            idempotency_key=idempotency_key,
+            initiated_by=initiated_by,
+            transaction_type="transfer",
+            amount_paise=amount_paise,
+            source_account_id=source_account_id,
+            destination_account_id=destination_account_id
+        )
+
+        if existing_transaction is not None:
+            return existing_transaction
+
+        if source_account.status != "active":
+            raise ValueError("Source account must be active.")
+
+        if destination_account.status != "active":
+            raise ValueError("Destination account must be active.")
+
         current_balance = get_account_balance(db, source_account)
 
         if amount_paise > current_balance:
@@ -400,8 +434,8 @@ def record_transfer(
         transaction = Transaction(
             transaction_type="transfer",
             amount_paise=amount_paise,
-            source_account_id=source_account.id,
-            destination_account_id=destination_account.id,
+            source_account_id=source_account_id,
+            destination_account_id=destination_account_id,
             initiated_by=initiated_by,
             status="pending",
             idempotency_key=idempotency_key
@@ -425,8 +459,8 @@ def record_transfer(
         )
 
         db.add_all([debit_entry, credit_entry])
-
         db.flush()
+
         verify_transaction_balance(db, transaction)
 
         transaction.status = "posted"
