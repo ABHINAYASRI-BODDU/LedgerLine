@@ -8,6 +8,13 @@ from app.models.transaction import Transaction
 from app.models.ledger_entry import LedgerEntry
 
 
+# Verify that the authenticated user owns the account.
+def verify_account_ownership(account: Account, initiated_by: int):
+    if account.user_id != initiated_by:
+        raise ValueError("You do not own this account.")
+
+
+# Check whether an idempotency key was already used.
 def check_existing_transaction(
     db: Session,
     idempotency_key: str,
@@ -39,10 +46,16 @@ def check_existing_transaction(
             "Idempotency key already used for a different transaction."
         )
 
+    # Return only successfully posted transactions.
+    if existing_transaction.status != "posted":
+        raise ValueError(
+            "Existing transaction is not successfully posted."
+        )
+
     return existing_transaction
 
 
-# Verify debit and credit equality before posting
+# Verify debit and credit equality before posting.
 def verify_transaction_balance(db: Session, transaction):
     debit_total = (
         db.query(func.sum(LedgerEntry.amount_paise))
@@ -69,6 +82,7 @@ def verify_transaction_balance(db: Session, transaction):
         raise ValueError("Transaction is not balanced.")
 
 
+# Create the system ledger account if it does not exist.
 def create_system_ledger_accounts(db: Session):
     system_accounts = [
         {
@@ -96,6 +110,7 @@ def create_system_ledger_accounts(db: Session):
     db.commit()
 
 
+# Get or create a customer's ledger account.
 def get_or_create_customer_ledger_account(db: Session, account):
     existing_ledger_account = (
         db.query(LedgerAccount)
@@ -120,6 +135,7 @@ def get_or_create_customer_ledger_account(db: Session, account):
     return ledger_account
 
 
+# Record a deposit.
 def record_deposit(
     db: Session,
     account,
@@ -129,6 +145,8 @@ def record_deposit(
 ):
     if amount_paise <= 0:
         raise ValueError("Deposit amount must be positive.")
+
+    verify_account_ownership(account, initiated_by)
 
     existing_transaction = check_existing_transaction(
         db=db,
@@ -189,14 +207,13 @@ def record_deposit(
 
         db.add_all([debit_entry, credit_entry])
 
-        # Save entries temporarily and verify them
         db.flush()
         verify_transaction_balance(db, transaction)
 
-        # Post only after successful verification
         transaction.status = "posted"
 
         db.commit()
+        db.refresh(transaction)
 
         return transaction
 
@@ -205,6 +222,7 @@ def record_deposit(
         raise
 
 
+# Calculate the account balance from ledger entries.
 def get_account_balance(db: Session, account):
     customer_ledger = (
         db.query(LedgerAccount)
@@ -236,6 +254,7 @@ def get_account_balance(db: Session, account):
     return credits - debits
 
 
+# Record a withdrawal.
 def record_withdrawal(
     db: Session,
     account,
@@ -245,6 +264,8 @@ def record_withdrawal(
 ):
     if amount_paise <= 0:
         raise ValueError("Withdrawal amount must be positive.")
+
+    verify_account_ownership(account, initiated_by)
 
     existing_transaction = check_existing_transaction(
         db=db,
@@ -310,14 +331,13 @@ def record_withdrawal(
 
         db.add_all([debit_entry, credit_entry])
 
-        # Save entries temporarily and verify them
         db.flush()
         verify_transaction_balance(db, transaction)
 
-        # Post only after successful verification
         transaction.status = "posted"
 
         db.commit()
+        db.refresh(transaction)
 
         return transaction
 
@@ -326,6 +346,7 @@ def record_withdrawal(
         raise
 
 
+# Record a transfer.
 def record_transfer(
     db: Session,
     source_account,
@@ -336,6 +357,9 @@ def record_transfer(
 ):
     if amount_paise <= 0:
         raise ValueError("Transfer amount must be positive.")
+
+    verify_account_ownership(source_account, initiated_by)
+    verify_account_ownership(destination_account, initiated_by)
 
     existing_transaction = check_existing_transaction(
         db=db,
@@ -402,14 +426,13 @@ def record_transfer(
 
         db.add_all([debit_entry, credit_entry])
 
-        # Save entries temporarily and verify them
         db.flush()
         verify_transaction_balance(db, transaction)
 
-        # Post only after successful verification
         transaction.status = "posted"
 
         db.commit()
+        db.refresh(transaction)
 
         return transaction
 

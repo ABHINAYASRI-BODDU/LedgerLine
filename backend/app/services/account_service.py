@@ -1,3 +1,4 @@
+
 from fastapi import HTTPException, status
 import secrets
 
@@ -10,17 +11,14 @@ from app.schemas.account import AccountCreate
 
 def generate_account_number(db: Session) -> str:
     while True:
-        # Generate a random 10-digit account number.
         number = f"LL{secrets.randbelow(10**10):010d}"
 
-        # Check whether this account number already exists.
         existing_account = (
             db.query(Account)
             .filter(Account.account_number == number)
             .first()
         )
 
-        # Return the number if it is unique.
         if existing_account is None:
             return number
 
@@ -45,6 +43,7 @@ def create_account(
 
     return new_account
 
+
 def get_user_accounts(
     db: Session,
     current_user: User
@@ -58,6 +57,7 @@ def get_user_accounts(
     )
 
     return accounts
+
 
 def get_account_by_id(
     db: Session,
@@ -75,6 +75,8 @@ def get_account_by_id(
     )
 
     return account
+
+
 def update_account_status(
     db: Session,
     account_id: int,
@@ -93,15 +95,32 @@ def update_account_status(
             detail="Account not found"
         )
 
-    if account.status == "closed":
+    allowed_transitions = {
+        "active": {"frozen", "closed"},
+        "frozen": {"active", "closed"},
+        "closed": set()
+    }
+
+    if new_status not in allowed_transitions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Closed accounts cannot be modified"
+            detail="Invalid account status"
         )
 
-    account.status = new_status
+    if new_status not in allowed_transitions[account.status]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This account status transition is not allowed"
+        )
 
-    db.commit()
-    db.refresh(account)
+    try:
+        account.status = new_status
 
-    return account
+        db.commit()
+        db.refresh(account)
+
+        return account
+
+    except Exception:
+        db.rollback()
+        raise

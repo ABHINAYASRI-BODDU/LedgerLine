@@ -1,17 +1,21 @@
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from app.security.token import verify_access_token
-from app.schemas.user import UserLogin, TokenResponse
-from app.security.password import verify_password
-from app.security.token import create_access_token
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse
-from app.security.password import hash_password
+from app.schemas.user import (
+    UserCreate,
+    UserResponse,
+    UserLogin,
+    TokenResponse
+)
+from app.security.password import hash_password, verify_password
+from app.security.token import create_access_token
+from app.dependencies.permissions import (
+    get_current_user as get_authenticated_user
+)
 
 
 router = APIRouter(
@@ -20,6 +24,7 @@ router = APIRouter(
 )
 
 
+# USER REGISTRATION
 @router.post(
     "/register",
     response_model=UserResponse,
@@ -66,6 +71,9 @@ def register_user(
         )
 
     return new_user
+
+
+# USER LOGIN
 @router.post(
     "/login",
     response_model=TokenResponse
@@ -80,7 +88,7 @@ def login_user(
         User.email == user_data.email
     ).first()
 
-    # Check whether user exists and password is correct
+    # Check email and password
     if not user or not verify_password(
         user_data.password,
         user.hashed_password
@@ -105,34 +113,14 @@ def login_user(
         "access_token": access_token,
         "token_type": "bearer"
     }
-bearer_scheme = HTTPBearer()
 
 
-@router.get("/me", response_model=UserResponse)
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db)
+# GET CURRENT USER PROFILE
+@router.get(
+    "/me",
+    response_model=UserResponse
+)
+def get_me(
+    current_user: User = Depends(get_authenticated_user)
 ):
-
-    token = credentials.credentials
-
-    user_id = verify_access_token(token)
-
-    if user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-
-    user = db.query(User).filter(
-        User.id == user_id
-    ).first()
-
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive"
-        )
-
-    return user
+    return current_user

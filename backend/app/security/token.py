@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta, timezone
 
 from jose import JWTError, jwt
@@ -31,15 +32,16 @@ def verify_access_token(token: str):
         payload = jwt.decode(
             token,
             settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM]
+            algorithms=["HS256"],
+            options={"require_exp": True, "require_sub": True}
         )
 
-        user_id = payload.get("sub")
+        user_id = int(payload["sub"])
 
-        if not user_id:
+        if user_id <= 0:
             return None
 
-        return int(user_id)
+        return user_id
 
-    except (JWTError, ValueError, TypeError):
+    except (JWTError, ValueError, TypeError, KeyError):
         return None
