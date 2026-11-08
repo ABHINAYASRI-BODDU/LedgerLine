@@ -430,3 +430,243 @@
     padding: 20px;
   }
 }
+
+/* LedgerLine Modern Minimal Logo */
+
+.brand-icon {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2563eb, #10243e);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 13px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.22);
+}
+
+.welcome-icon {
+  width: 66px;
+  height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2563eb, #10243e);
+  color: white;
+  border-radius: 19px;
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: -3px;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.2);
+  margin-bottom: 22px;
+}
+
+/* =================================
+   LEDGERLINE LOGIN AND REGISTER PAGE
+================================= */
+
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #071b3a, #123e78, #071b3a);
+  color: #10243e;
+  font-family: Arial, sans-serif;
+}
+
+.navbar {
+  width: 100%;
+  padding: 25px 7%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: white;
+}
+
+.navbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  font-size: 27px;
+  font-weight: bold;
+}
+
+.nav-caption {
+  font-size: 15px;
+  color: #dbeafe;
+}
+
+.login-section {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 35px 20px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 470px;
+  padding: 42px;
+  background: white;
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+}
+
+.login-card h1 {
+  text-align: center;
+  font-size: 29px;
+  color: #10243e;
+  margin-bottom: 10px;
+}
+
+.subtitle {
+  text-align: center;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-bottom: 30px;
+}
+
+.login-card .form-group {
+  margin-bottom: 20px;
+}
+
+.login-card label {
+  display: block;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 9px;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: white;
+  color: #10243e;
+  font-size: 15px;
+  outline: none;
+}
+
+.login-card input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.login-card input::placeholder {
+  color: #94a3b8;
+}
+
+.login-button {
+  width: 100%;
+  padding: 14px;
+  margin-top: 8px;
+  border: none;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #2563eb, #123e78);
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login-button:hover {
+  background: #10243e;
+}
+
+.login-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-message {
+  text-align: center;
+  color: #166534;
+  background: #dcfce7;
+  padding: 11px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-top: 15px;
+}
+
+.login-card > .login-button {
+  margin-top: 14px;
+  background: white;
+  color: #1d4e7a;
+  border: 1px solid #1d4e7a;
+}
+
+.login-card > .login-button:hover {
+  background: #eff6ff;
+}
+
+.register-text {
+  text-align: center;
+  margin-top: 25px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.register-text a {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.register-text a:hover {
+  text-decoration: underline;
+}
+
+.security-note {
+  text-align: center;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 22px;
+  margin-top: 25px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.footer {
+  text-align: center;
+  color: #dbeafe;
+  padding: 20px;
+  font-size: 13px;
+}
+
+/* Responsive login page */
+
+@media (max-width: 600px) {
+  .navbar {
+    padding: 18px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .navbar .brand {
+    font-size: 22px;
+  }
+
+  .nav-caption {
+    font-size: 12px;
+  }
+
+  .login-section {
+    padding: 20px 15px;
+  }
+
+  .login-card {
+    padding: 28px 22px;
+  }
+
+  .login-card h1 {
+    font-size: 25px;
+  }
+}
