@@ -10,3 +10,13 @@ backend/*.db
 
 # Environment secrets
 .env
+# Node.js dependencies
+node_modules/
+frontend/node_modules/
+
+# Frontend build files
+frontend/dist/
+
+# Frontend environment secrets
+frontend/.env
+frontend/.env.*
