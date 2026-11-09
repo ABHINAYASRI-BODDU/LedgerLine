@@ -1,70 +1,296 @@
-# Threat Model — LedgerLine
+# LedgerLine - Threat Model and Security Analysis
 
-## Scope and assumptions
 
-This document is a baseline threat model for a ledger or personal-finance application. Confirm the actual architecture, data flows, and controls before treating any item as an implemented or verified property.
 
-## Assets
+## 1. Purpose
 
-- Account credentials, session tokens, and recovery methods
-- Financial transactions, balances, and account metadata
-- Personal information and imported statements
-- Ledger integrity, audit history, and service availability
-- Encryption keys, backups, and configuration secrets
 
-## Trust boundaries
 
-- User device and browser/app to the LedgerLine service
-- Public network to application endpoints
-- Application services to databases, file storage, and third-party integrations
-- Production systems to administrators, support tools, and deployment pipelines
+This document identifies security and financial integrity threats affecting LedgerLine and describes the controls implemented to reduce those risks.
 
-## Threats and mitigations
 
-| Threat | Potential impact | Recommended controls |
+
+LedgerLine is a development and demonstration banking application. It is not a production banking platform.
+
+
+
+## 2. Assets to Protect
+
+
+
+- User account credentials and password hashes.
+
+- JWT access tokens.
+
+- Customer account information.
+
+- Financial transactions and balances.
+
+- Double-entry ledger records.
+
+- Failed transaction audit records.
+
+- Database files and backups.
+
+- Application configuration and JWT secrets.
+
+
+
+## 3. System Components
+
+
+
+LedgerLine consists of:
+
+
+
+- **Frontend:** React application built with Vite.
+
+- **Backend:** Python application using FastAPI.
+
+- **Database:** SQLite for local development.
+
+- **ORM:** SQLAlchemy.
+
+- **Authentication:** Password hashing and JWT authentication.
+
+- **Testing:** Pytest and HTTPX.
+
+
+
+## 4. Trust Boundaries
+
+
+
+1\. User browser to React frontend.
+
+2\. Frontend to FastAPI backend.
+
+3\. Backend services to the database.
+
+4\. Application administrators to protected administrative operations.
+
+5\. Development environment to source code and deployment configuration.
+
+
+
+All client-provided data must be treated as untrusted and validated by the backend.
+
+
+
+## 5. Identified Threats and Mitigations
+
+
+
+| Threat | Potential impact | Implemented controls and remaining work |
+
 |---|---|---|
-| Account takeover through stolen or reused credentials | Unauthorized access to financial data or actions | Strong password hashing, MFA, rate limiting, secure recovery, and session revocation |
-| Broken authorization or tenant isolation | A user accesses or changes another user's records | Enforce authorization server-side on every request; test object-level and tenant-level access controls |
-| Injection or unsafe query construction | Data disclosure, modification, or service compromise | Parameterized queries, input validation, safe output handling, and security testing |
-| Cross-site scripting or request forgery | Actions performed as a victim or session theft | Context-aware output encoding, restrictive content security policy, CSRF defenses, and secure cookie settings |
-| Tampering with transactions or audit records | Incorrect balances, disputes, or loss of trust | Validate business rules server-side, use atomic operations, protect audit trails, and reconcile ledger entries |
-| Malicious or malformed statement uploads | Data exposure, parser abuse, or resource exhaustion | Restrict size and type, validate content, isolate parsing, scan where appropriate, and set processing limits |
-| Exposure of secrets or sensitive data in logs/backups | Persistent disclosure of credentials or financial information | Minimize collection, redact logs, encrypt backups, restrict access, and rotate exposed secrets |
-| Abuse of third-party integrations or webhooks | Forged updates or unauthorized data access | Verify signatures, authenticate integrations, limit scopes, validate callbacks, and support key rotation |
-| Denial of service or resource exhaustion | Users cannot access or update records | Rate limits, quotas, timeouts, bounded workloads, monitoring, and tested recovery procedures |
-| Compromised dependency or deployment pipeline | Malicious code reaches production | Pin and review dependencies, scan builds, protect signing/deployment credentials, and require reviewed changes |
 
-## Baseline security requirements
+| Unauthorized account access | Exposure of customer information or unauthorized transactions | Password hashing, JWT authentication and protected endpoints. Rate limiting and MFA remain future work. |
 
-- Use TLS for data in transit and encryption at rest for sensitive data.
-- Apply least privilege to users, services, administrators, and database accounts.
-- Record security-relevant events without logging secrets or unnecessary financial details.
-- Provide tested backup, restoration, incident response, and credential-rotation procedures.
-- Review authorization, input handling, and data retention whenever the architecture changes.
+| Broken account authorization | A customer accesses another customer's account | Server-side account ownership checks and role-based permissions. |
 
-## Review checklist
+| Duplicate transaction requests | Money is credited or transferred more than once | Idempotency keys and duplicate-request tests. |
 
-- [ ] Document actual components, data flows, and external services.
-- [ ] Identify sensitive data collected, retained, and shared.
-- [ ] Assign owners and severity to applicable threats.
-- [ ] Verify mitigations through tests, configuration review, and operational procedures.
-- [ ] Revisit this model after material product or infrastructure changes.
-  
+| Negative account balances | Customers withdraw more money than available | Insufficient-balance validation and concurrency safeguards. |
 
-  
-# LedgerLine - Threat Analysis
+| Concurrent withdrawals | Multiple requests spend the same available balance | SQLite transaction serialization using `BEGIN IMMEDIATE`; PostgreSQL row-locking behavior still requires verification. |
 
-This document will track potential security and financial integrity risks.
+| Ledger modification or deletion | Financial records become unreliable | SQLite triggers prevent ledger-entry updates and deletions. PostgreSQL-specific protections remain future work. |
 
-## Identified Threats
+| Unbalanced transactions | Incorrect financial records or balances | Debit and credit verification before posting and ledger integrity verification. |
 
-1. Unauthorized account access
-2. Duplicate money transfers
-3. Negative account balances
-4. Concurrent withdrawal requests
-5. Ledger modification or deletion
-6. Failed transactions causing inconsistent balances
+| Failed transactions | Inconsistent balances or missing failure records | Transaction rollback and independently stored failed-attempt audit records. |
 
-## Status
+| Secret exposure | Unauthorized access through leaked credentials or configuration | Environment-based configuration and `.gitignore` protections. Secret rotation and deployment secret management remain necessary. |
 
-Threat mitigations and security tests are yet to be implemented.
+| Denial of service | Application becomes unavailable | Additional rate limiting, monitoring and resource controls are required. |
+
+
+
+## 6. Implemented Security Controls
+
+
+
+### Authentication and Authorization
+
+
+
+- Passwords are hashed rather than stored as plain text.
+
+- JWT tokens are used for authentication.
+
+- Protected API endpoints require authentication.
+
+- Role-based access control distinguishes customers and administrators.
+
+- Customer account ownership is checked by the backend.
+
+
+
+### Financial Transaction Protection
+
+
+
+- Amounts are stored as integer paise.
+
+- Deposits, withdrawals and transfers use double-entry bookkeeping.
+
+- Insufficient-balance requests are rejected.
+
+- Idempotency keys help prevent duplicate transaction processing.
+
+- Database transactions provide rollback when operations fail.
+
+- Concurrency safeguards are implemented for money movements.
+
+
+
+### Audit and Ledger Integrity
+
+
+
+- Failed deposit, withdrawal and transfer attempts are recorded.
+
+- Failed-attempt audit records use an independent database session.
+
+- SQLite triggers prevent updates and deletions of ledger entries.
+
+- Ledger integrity verification checks debit and credit totals against transaction amounts.
+
+- Automated tests verify important financial integrity behaviors.
+
+
+
+## 7. Automated Security and Integrity Testing
+
+
+
+The project includes automated tests for:
+
+
+
+- Password hashing and verification.
+
+- Authentication and invalid or expired tokens.
+
+- Account management and authorization.
+
+- Deposits, withdrawals and transfers.
+
+- Duplicate transaction requests.
+
+- Insufficient-balance validation.
+
+- Transaction history.
+
+- Ledger debit and credit balancing.
+
+- Transaction rollback.
+
+- Concurrent withdrawals and transfers.
+
+- Failed transaction auditing.
+
+- Ledger-entry update and deletion prevention.
+
+- Ledger integrity verification.
+
+
+
+**Latest recorded result: 37 tests passed.**
+
+
+
+This result applies to the recorded local test run. Tests should be rerun after code changes.
+
+
+
+## 8. Remaining Risks and Future Improvements
+
+
+
+1\. Configure and test PostgreSQL deployment.
+
+2\. Add database migrations.
+
+3\. Implement PostgreSQL-specific ledger immutability protections.
+
+4\. Verify concurrent transactions using PostgreSQL row-level locking and appropriate isolation.
+
+5\. Strengthen idempotency handling for concurrent requests using database conflict handling.
+
+6\. Add rate limiting and protection against brute-force login attempts.
+
+7\. Consider multi-factor authentication.
+
+8\. Configure HTTPS and secure production secrets.
+
+9\. Review logging to avoid exposing tokens or sensitive financial information.
+
+10\. Implement monitoring, backup and recovery procedures.
+
+11\. Perform additional security testing and deployment reviews.
+
+
+
+SQLite's `BEGIN IMMEDIATE` behavior is not equivalent to PostgreSQL row-level locking. Passing SQLite concurrency tests does not prove production PostgreSQL concurrency safety.
+
+
+
+## 9. Security Assumptions and Limitations
+
+
+
+- The current implementation uses SQLite for local development.
+
+- SQLite immutability triggers are database-specific.
+
+- The current automated tests do not establish production security.
+
+- No claim of regulatory compliance or production banking readiness is made.
+
+- Production deployment requires additional infrastructure, operational controls and security review.
+
+
+
+## 10. Review Checklist
+
+
+
+- [x] Identify application components and trust boundaries.
+
+- [x] Identify important financial and authentication assets.
+
+- [x] Implement authentication and authorization controls.
+
+- [x] Implement idempotency and transaction protections.
+
+- [x] Implement failed-attempt auditing.
+
+- [x] Implement SQLite ledger immutability protections.
+
+- [x] Add automated security and integrity tests.
+
+- [ ] Verify PostgreSQL deployment and concurrency behavior.
+
+- [ ] Add production monitoring, rate limiting and recovery procedures.
+
+- [ ] Complete production security review.
+
+
+
+## 11. Conclusion
+
+
+
+LedgerLine implements several foundational authentication, authorization, transaction safety, audit and ledger integrity controls.
+
+
+
+The project demonstrates how double-entry bookkeeping and backend security mechanisms can be combined in a full-stack financial application.
+
+
+
+Further work is required before the application can be considered suitable for production financial use.
+
