@@ -1,6 +1,6 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import or_
 
 from app.models.account import Account
@@ -20,6 +20,7 @@ from app.services.ledger_service import (
     record_withdrawal,
     record_transfer
 )
+from app.services.audit_service import record_failed_attempt
 
 
 router = APIRouter(
@@ -58,10 +59,23 @@ def deposit_money(
             initiated_by=current_user.id,
             idempotency_key=deposit_data.idempotency_key
         )
-
         return transaction
 
     except ValueError as error:
+        record_failed_attempt(
+            transaction_type="deposit",
+            amount_paise=deposit_data.amount_paise,
+            initiated_by=current_user.id,
+            failure_reason=str(error),
+            destination_account_id=account.id,
+            idempotency_key=deposit_data.idempotency_key,
+            session_factory=sessionmaker(
+                bind=db.get_bind(),
+                autocommit=False,
+                autoflush=False
+            )
+        )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error)
@@ -98,10 +112,23 @@ def withdraw_money(
             initiated_by=current_user.id,
             idempotency_key=withdrawal_data.idempotency_key
         )
-
         return transaction
 
     except ValueError as error:
+        record_failed_attempt(
+            transaction_type="withdrawal",
+            amount_paise=withdrawal_data.amount_paise,
+            initiated_by=current_user.id,
+            failure_reason=str(error),
+            source_account_id=account.id,
+            idempotency_key=withdrawal_data.idempotency_key,
+            session_factory=sessionmaker(
+                bind=db.get_bind(),
+                autocommit=False,
+                autoflush=False
+            )
+        )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error)
@@ -151,10 +178,24 @@ def transfer_money(
             initiated_by=current_user.id,
             idempotency_key=transfer_data.idempotency_key
         )
-
         return transaction
 
     except ValueError as error:
+        record_failed_attempt(
+            transaction_type="transfer",
+            amount_paise=transfer_data.amount_paise,
+            initiated_by=current_user.id,
+            failure_reason=str(error),
+            source_account_id=source_account.id,
+            destination_account_id=destination_account.id,
+            idempotency_key=transfer_data.idempotency_key,
+            session_factory=sessionmaker(
+                bind=db.get_bind(),
+                autocommit=False,
+                autoflush=False
+            )
+        )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error)
