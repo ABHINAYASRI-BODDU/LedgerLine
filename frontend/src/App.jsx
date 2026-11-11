@@ -18,6 +18,11 @@ function App() {
   const [accounts, setAccounts] = useState([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
 
+  // New account creation states
+  const [newAccountType, setNewAccountType] = useState('savings')
+  const [creatingAccount, setCreatingAccount] = useState(false)
+  const [accountMessage, setAccountMessage] = useState('')
+
   const [transactions, setTransactions] = useState([])
   const [loadingTransactions, setLoadingTransactions] = useState(false)
   const [transactionError, setTransactionError] = useState('')
@@ -95,6 +100,43 @@ function App() {
       setMessage(error.message)
     } finally {
       setLoadingAccounts(false)
+    }
+  }
+
+  // Create another bank account for the logged-in user.
+  async function handleCreateAccount() {
+    setCreatingAccount(true)
+    setAccountMessage('')
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/accounts/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          account_type: newAccountType
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === 'string'
+            ? data.detail
+            : 'Unable to create account.'
+        )
+      }
+
+      setAccountMessage('New bank account created successfully!')
+
+      await loadAccounts(token)
+    } catch (error) {
+      setAccountMessage(error.message || 'Unable to create account.')
+    } finally {
+      setCreatingAccount(false)
     }
   }
 
@@ -276,6 +318,7 @@ function App() {
     setTransactions([])
     setTransactionError('')
     setMessage('')
+    setAccountMessage('')
     setActivePage('Overview')
   }
 
@@ -526,6 +569,7 @@ function App() {
   function openPage(page) {
     setActivePage(page)
     setMessage('')
+    setAccountMessage('')
     setAmount('')
     setSelectedAccount('')
     setSourceAccount('')
@@ -761,6 +805,39 @@ function App() {
                 <h2>Your Accounts</h2>
                 <p>Manage and view your bank accounts.</p>
               </div>
+            </div>
+
+            {/* Create another bank account */}
+            <div className="account-card">
+              <h3>Open Another Bank Account</h3>
+              <p>Create an additional account under your existing login.</p>
+
+              <div className="form-group">
+                <label htmlFor="new-account-type">Account type</label>
+
+                <select
+                  id="new-account-type"
+                  value={newAccountType}
+                  onChange={(event) => setNewAccountType(event.target.value)}
+                  disabled={creatingAccount}
+                >
+                  <option value="savings">Savings Account</option>
+                  <option value="checking">Checking Account</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                className="money-submit-button"
+                onClick={handleCreateAccount}
+                disabled={creatingAccount}
+              >
+                {creatingAccount ? 'Creating Account...' : 'Add Account'}
+              </button>
+
+              {accountMessage && (
+                <p className="form-message">{accountMessage}</p>
+              )}
             </div>
 
             {loadingAccounts ? (
