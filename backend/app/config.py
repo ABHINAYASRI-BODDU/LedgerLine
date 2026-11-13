@@ -9,14 +9,14 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
 
-    APP_NAME: str
-    APP_VERSION: str
-    ENVIRONMENT: str
+    APP_NAME: str = "LedgerLine API"
+    APP_VERSION: str = "1.0.0"
+    ENVIRONMENT: str = "production"
 
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str
+    JWT_SECRET_KEY: str = "ledgerline-secret-key-replace-in-production"
+    JWT_ALGORITHM: str = "HS256"
 
-    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
